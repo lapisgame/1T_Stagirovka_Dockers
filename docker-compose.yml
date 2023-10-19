@@ -51,12 +51,13 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     # For backward compatibility, with Airflow <2.3
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+    AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: 'False'
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
@@ -75,7 +76,7 @@ services:
   postgres:
     image: postgres:13
     ports:
-      - 5432:5432
+      - 10204:5432
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -92,7 +93,7 @@ services:
   db:
     image: postgres
     ports:
-      - 5430:5432
+      - 10205:5432
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
@@ -116,7 +117,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - 8080:8080
+      - 10203:8080
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 10s
@@ -277,9 +278,9 @@ services:
     profiles:
       - flower
     ports:
-      - 5555:5555
+      - 10206:5555
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      test: ["CMD", "curl", "--fail", "http://146.120.224.155:10206/"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -289,7 +290,39 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  jupyterhub:
+    build: .
+    image: my_jupyterhub
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+      - jupyterhub_data:/srv/jupyterhub/data
+    ports:
+      - "10201:8000"
+    networks:
+      - jupyterhub
+  
+  postgres_main:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: 4_group
+      POSTGRES_PASSWORD: 4_group
+      POSTGRES_DB: 4DB
+    volumes:
+      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
+    ports:
+      - "10202:5432"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "4_group", "-W", "4_group"]
+      interval: 5s
+      retries: 5
+    restart: always
+
 volumes:
   postgres-db-volume:
   db_vol:
+  jupyterhub_data:
   
+networks:
+  jupyterhub:
+    name: jupyterhub

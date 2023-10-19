@@ -14,7 +14,7 @@ mkdir ./airflow/dags
 mkdir ./airflow/plugins
 
 # Подлючение к Airflow
-http://localhost:8080
+http://146.120.224.155:10203
 airflow / airflow 
 
 # Запуск python скрипта
@@ -25,8 +25,8 @@ sudo pip install psycopg2
 ./load_currency_to_s3.py
 
 # Подключиться к DBeaver
-hostname = localhost
-port = 5430
+hostname = 146.120.224.155
+port = 10204
 username = postgres
 password = password
 database = test

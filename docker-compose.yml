@@ -1,51 +1,10 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-#
-
-# Basic Airflow cluster configuration for CeleryExecutor with Redis and PostgreSQL.
-#
-# WARNING: This configuration is for local development. Do not use it in a production deployment.
-#
-# This configuration supports basic configuration using environment variables or an .env file
-# The following variables are supported:
-#
-# AIRFLOW_IMAGE_NAME           - Docker image name used to run Airflow.
-#                                Default: apache/airflow:2.3.3
-# AIRFLOW_UID                  - User ID in Airflow containers
-#                                Default: 50000
-# Those configurations are useful mostly in case of standalone testing/running Airflow in test/try-out mode
-#
-# _AIRFLOW_WWW_USER_USERNAME   - Username for the administrator account (if requested).
-#                                Default: airflow
-# _AIRFLOW_WWW_USER_PASSWORD   - Password for the administrator account (if requested).
-#                                Default: airflow
-# _PIP_ADDITIONAL_REQUIREMENTS - Additional PIP requirements to add when starting all containers.
-#                                Default: ''
-#
-# Feel free to modify this file to suit your needs.
----
 version: '3'
 x-airflow-common:
   &airflow-common
-  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
-  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
-  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.3.3}
-  # build: .
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.3.3-python3.10}
+  build:
+    context: ./x-airflow
+    dockerfile: Dockerfile.custom
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -57,13 +16,17 @@ x-airflow-common:
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: 11000
+    AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT: 11000
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: 'eat'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- aiohttp asyncio requests[socks] requests beautifulsoup4 lxml progressbar python-dotenv fake_useragent datetime pandas}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/data_dag_pars:/opt/airflow/data_dag_pars
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -155,8 +118,6 @@ services:
       retries: 5
     environment:
       <<: *airflow-common-env
-      # Required to handle warm shutdown of the celery workers properly
-      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
     restart: always
     depends_on:
@@ -291,29 +252,45 @@ services:
         condition: service_completed_successfully
 
   jupyterhub:
-    build: .
+    build: jupyterhub/.
     image: my_jupyterhub
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+      - ./jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
       - jupyterhub_data:/srv/jupyterhub/data
     ports:
       - "10201:8000"
     networks:
       - jupyterhub
   
-  postgres_main:
+  postgres_dev:
     image: postgres:latest
     environment:
-      POSTGRES_USER: 4_group
-      POSTGRES_PASSWORD: 4_group
-      POSTGRES_DB: 4DB
+      POSTGRES_USER: 1T_Internship_dev
+      POSTGRES_PASSWORD: 1T_Internship_PASS
+      POSTGRES_DB: 1T_Internship_dev
     volumes:
       - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
     ports:
-      - "10202:5432"
+      - "10211:5432"
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "4_group", "-W", "4_group"]
+      test: [ "CMD", "pg_isready", "-U", "1T_Internship_dev", "-d", "1T_Internship_dev", "-p", "10211"]
+      interval: 5s
+      retries: 5
+    restart: always
+  
+  postgres_prod:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: 1T_Internship_prod
+      POSTGRES_PASSWORD: 1T_Internship_PASS
+      POSTGRES_DB: 1T_Internship_prod
+    volumes:
+      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
+    ports:
+      - "10212:5432"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "1T_Internship_prod", "-d", "1T_Internship_prod", "-p", "10212"]
       interval: 5s
       retries: 5
     restart: always

@@ -4,3 +4,4 @@ notebooks/__pycache__/
 Preparation_to_workshop.txt
 airflow/logs/
 airflow/dags/__pycache__/
+.env

@@ -1,5 +1,7 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
+from airflow.operators.postgres_operator import PostgresOperator
+from airflow.hooks.postgres_hook import PostgresHook
 from datetime import datetime
 
 import aiohttp
@@ -26,11 +28,11 @@ class Rabota1000_parser_async:
     def __init__(self, city='russia', max_page_count=3) -> None:
         self.max_page_count = max_page_count
         self.basic_url = f'https://rabota1000.ru/{city}/'
-        self.df = pd.DataFrame(columns=['vac_link', 'name', 
-                                        'city', 'company', 'experience', 
-                                        'schedule', 'employment', 
-                                        'skills', 'description', 
+        self.df = pd.DataFrame(columns=['vac_link', 'name', 'city', 'company', 'experience', 
+                                        'schedule', 'employment', 'skills', 'description', 
                                         'salary', 'time'])
+        self.create_rabota1000_table()
+
         self.vac_name_list = []
         self.get_vac_name_list_into_csv()
 
@@ -46,6 +48,26 @@ class Rabota1000_parser_async:
         self.re_vacancy_id_zarplata = r'\/vacancy\/card\/id(\d+)'
 
         self.access_token = self.fetch_token()
+
+    def create_rabota1000_table(self):
+        pg_hook = PostgresHook(postgres_conn_id='PostgreSQL_DEV')
+        conn = pg_hook.get_conn()
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS rabota1000 (
+                    vac_link VARCHAR(100),
+                    name VARCHAR(150),
+                    city VARCHAR(50),
+                    company VARCHAR(60),
+                    experience TEXT,
+                    schedule TEXT,
+                    employment VARCHAR(100),
+                    skills VARCHAR(200),
+                    description TEXT,
+                    salary VARCHAR(50),
+                    time VARCHAR(40)
+        );""")
+
+        conn.close()
 
     def get_proxy_list(self):
         proxies = []
@@ -110,7 +132,7 @@ class Rabota1000_parser_async:
                 try:
                     res = requests.get(url, proxies={'http':prox, 'https':prox}, timeout=2)
                     if res.status_code == 200:
-                        print(f'GOOD PROXY = {prox}')
+                        # print(f'GOOD PROXY = {prox}')
                         self.main_proxy = prox
                         break
                 except:
@@ -175,8 +197,24 @@ class Rabota1000_parser_async:
             for line in f:
                 self.vac_name_list.append(line)
 
+    def save_to_db(self):
+        pg_hook = PostgresHook(postgres_conn_id='PostgreSQL_DEV')
+        conn = pg_hook.get_conn()
+        cur = conn.cursor()
+
+        sql = """INSERT INTO rabota1000 
+            (vac_link, name, city, company, experience, schedule, employment, skills, description, salary, time) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        
+        for item in self.df:
+            cur.execute(sql, tuple(item))
+        conn.commit()
+
+        conn.close()
+
     def topars(self)->None:
-        for vac_name in self.vac_name_list[0:50]:
+        #! ВЕРНУТЬ ПОЛНЫЙ СПИСОК
+        for vac_name in self.vac_name_list[0:20]:
             print(vac_name)
             links = self.get_list_links_into_rabota1000(vac_name)
             pre_pars_dict = self.async_pars_url_list(links)
@@ -188,6 +226,12 @@ class Rabota1000_parser_async:
             print()
             self.df = self.df.drop_duplicates()
             self.df.to_csv('async_pars.csv', index=False, sep=';')
+            os.system('cp -f /opt/airflow/async_pars.csv /opt/airflow/async_pars_copy.csv')
+
+            self.save_to_db()
+            self.df = pd.DataFrame(columns=['vac_link', 'name', 'city', 'company', 'experience', 
+                                            'schedule', 'employment', 'skills', 'description', 
+                                            'salary', 'time'])
 
 
     #* Достает id вакансии и название сайта для дальнейшей обработки 
@@ -222,31 +266,49 @@ class Rabota1000_parser_async:
         ua = FakeUserAgent()
         url = f"{rabota_url}"
 
+        self.set_main_proxy()
         if 'https://' in url:
             proxy = f'https://{self.main_proxy}'
         else:
             proxy = f'http://{self.main_proxy}'
 
         try:
+            print('try 1.1')
             data = await session.get(url, headers={'User-Agent':ua.random}, timeout=5, proxy=proxy)
-            url = data.url
-            print('1', rabota_url, url)
-            return self.get_vac_id_into_url(str(url))            
-
-        except Exception as e:
-            try:
-                status = 403
-                while status != 200:
-                    print('while  fetch_vacancy_redirect_url')
-                    self.set_main_proxy()
-
-                    data = await session.get(url, headers={'User-Agent':ua.random}, timeout=5, proxy=proxy)
-                    status = data.status
-
-                url = data.url
-                print('2', rabota_url, url)
-                return self.get_vac_id_into_url(str(url))  
+            print('try 1.2')
+            new_url = data.url
+            print('1 ', new_url)
+            return self.get_vac_id_into_url(str(new_url)) 
             
+        except Exception as e:
+            print('exc 1')
+            try:
+                print('try 2')
+                status = 403
+                count = 0
+                new_url = ''
+                print('while fetch_vacancy_redirect_url ', url)
+                while status != 200 and count<5:
+                    self.set_main_proxy()
+                    if 'https://' in url:
+                        proxy = f'https://{self.main_proxy}'
+                    else:
+                        proxy = f'http://{self.main_proxy}'
+
+                    try:
+                        print('try 3.1')
+                        data = await session.get(url, headers={'User-Agent':ua.random}, timeout=5, proxy=proxy)
+                        status = data.status
+                        print('Status = ',status)
+                        new_url = data.url
+                        print('2 ', count, new_url)
+                        if status == 200:
+                            return self.get_vac_id_into_url(str(new_url))
+                    except Exception as e:
+                        pass
+                    
+                    count += 1
+                return self.get_vac_id_into_url(str(url))
             except Exception as e:
                 print(e)
                 return {'source':'', 'vac_id':''}
@@ -293,8 +355,11 @@ class Rabota1000_parser_async:
 
                     ua = FakeUserAgent()
                     headers = {'User-Agent':ua.random}
-                    
-                    page = requests.get(used_url, proxies={'http':self.main_proxy, 'https':self.main_proxy}, headers=headers, timeout=5)
+                    try:
+                        page = requests.get(used_url, proxies={'http':self.main_proxy, 'https':self.main_proxy}, headers=headers, timeout=5)
+                    except Exception as e:
+                        pass
+
                     status_code = page.status_code
 
                 soup = BeautifulSoup(page.text, 'html.parser')
@@ -304,7 +369,7 @@ class Rabota1000_parser_async:
                 return res
             except:
                 print('EEE get_list_links_into_rabota1000')
-                print('change Proxy  307')
+                print('change Proxy  351')
                 self.set_main_proxy()
                 return res
 

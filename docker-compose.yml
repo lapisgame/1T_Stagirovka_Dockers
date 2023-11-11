@@ -1,10 +1,10 @@
 version: '3'
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.3.3-python3.10}
-  build:
-    context: ./x-airflow
-    dockerfile: Dockerfile.custom
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.7.0-python3.11}
+  # build:
+  #   context: ./x-airflow
+  #   dockerfile: Dockerfile.custom
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -20,6 +20,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT: 11000
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__DEFAULT_TIMEZONE: 'eat'
+    AIRFLOW__CORE__TEST_CONNECTION: 'Enabled'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- aiohttp asyncio requests[socks] requests beautifulsoup4 lxml progressbar python-dotenv fake_useragent datetime pandas}
   volumes:
@@ -37,6 +38,7 @@ x-airflow-common:
 
 services:
   postgres:
+    container_name: airflow_main_postgres
     image: postgres:13
     ports:
       - 10204:5432
@@ -54,6 +56,7 @@ services:
     restart: always
 
   db:
+    container_name: airflow_test_postgres
     image: postgres
     ports:
       - 10205:5432
@@ -66,6 +69,7 @@ services:
       - ./postgres/init_scripts/task1.sql:/docker-entrypoint-initdb.d/init.sql
 
   redis:
+    container_name: redis
     image: redis:latest
     expose:
       - 6379
@@ -77,6 +81,7 @@ services:
     restart: always
 
   airflow-webserver:
+    container_name: airflow_webserver
     <<: *airflow-common
     command: webserver
     ports:
@@ -93,6 +98,7 @@ services:
         condition: service_completed_successfully
 
   airflow-scheduler:
+    container_name: airflow_scheduler
     <<: *airflow-common
     command: scheduler
     healthcheck:
@@ -107,6 +113,7 @@ services:
         condition: service_completed_successfully
 
   airflow-worker:
+    container_name: airflow_worker
     <<: *airflow-common
     command: celery worker
     healthcheck:
@@ -126,6 +133,7 @@ services:
         condition: service_completed_successfully
 
   airflow-triggerer:
+    container_name: airflow_triggerer
     <<: *airflow-common
     command: triggerer
     healthcheck:
@@ -140,6 +148,7 @@ services:
         condition: service_completed_successfully
 
   airflow-init:
+    container_name: airflow_FUCK_INIT
     <<: *airflow-common
     entrypoint: /bin/bash
     # yamllint disable rule:line-length
@@ -218,6 +227,7 @@ services:
       - .:/sources
 
   airflow-cli:
+    container_name: airflow_cli
     <<: *airflow-common
     profiles:
       - debug
@@ -234,6 +244,7 @@ services:
   # or by explicitly targeted on the command line e.g. docker-compose up flower.
   # See: https://docs.docker.com/compose/profiles/
   flower:
+    container_name: flower
     <<: *airflow-common
     command: celery flower
     profiles:
@@ -252,6 +263,7 @@ services:
         condition: service_completed_successfully
 
   jupyterhub:
+    container_name: jupyterhub
     build: jupyterhub/.
     image: my_jupyterhub
     volumes:
@@ -262,38 +274,6 @@ services:
       - "10201:8000"
     networks:
       - jupyterhub
-  
-  postgres_dev:
-    image: postgres:latest
-    environment:
-      POSTGRES_USER: 1T_Internship_dev
-      POSTGRES_PASSWORD: 1T_Internship_PASS
-      POSTGRES_DB: 1T_Internship_dev
-    volumes:
-      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
-    ports:
-      - "10211:5432"
-    healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "1T_Internship_dev", "-d", "1T_Internship_dev", "-p", "10211"]
-      interval: 5s
-      retries: 5
-    restart: always
-  
-  postgres_prod:
-    image: postgres:latest
-    environment:
-      POSTGRES_USER: 1T_Internship_prod
-      POSTGRES_PASSWORD: 1T_Internship_PASS
-      POSTGRES_DB: 1T_Internship_prod
-    volumes:
-      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
-    ports:
-      - "10212:5432"
-    healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "1T_Internship_prod", "-d", "1T_Internship_prod", "-p", "10212"]
-      interval: 5s
-      retries: 5
-    restart: always
 
 volumes:
   postgres-db-volume:

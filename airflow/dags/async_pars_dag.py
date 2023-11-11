@@ -500,8 +500,8 @@ class Rabota1000_parser_async:
 
 # Инициализация DAG
 dag = DAG(
-    'Async_Pars_DAG',
-    description='DAG для асинхронного парсинга вакансий из vac_name_list.csv',
+    'Half_Async_Pars_DAG',
+    description='DAG для частично асинхронного парсинга вакансий из vac_name_list.csv',
     schedule_interval=None,
     start_date=datetime(2022, 10, 31),
     catchup=False

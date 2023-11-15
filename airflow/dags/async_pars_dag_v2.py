@@ -390,7 +390,7 @@ class Rabota1000_parser_async:
         res = {}
         try:
             print('_pars_url_hh 1')
-            data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}, headers = {'Authorization': f'Bearer {self.access_token}'}).json()
+            data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}).json()
             if data['description'] != 'Not Found':
                 res['vac_link'] = f'https://hh.ru/vacancy/{id}'                             # Ссылка
                 res['name'] = data['name']                                                  # Название
@@ -424,7 +424,7 @@ class Rabota1000_parser_async:
             try:
                 print('_pars_url_hh 2')
                 self.set_main_proxy()
-                data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}, headers = {'Authorization': f'Bearer {self.access_token}'}).json()
+                data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}).json()
                 if data['description'] != 'Not Found':
                     res['vac_link'] = f'https://hh.ru/vacancy/{id}'                             # Ссылка
                     res['name'] = data['name']                                                  # Название
@@ -457,7 +457,7 @@ class Rabota1000_parser_async:
             except Exception as e:
                 print(f'Not Found {e}')
                 print(f'https://api.hh.ru/vacancies/{id}')
-                data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}, headers = {'Authorization': f'Bearer {self.access_token}'}).json()
+                data = requests.get(f'https://api.hh.ru/vacancies/{id}', proxies={'http':self.main_proxy, 'https':self.main_proxy}).json()
                 print(data)
 
         return res

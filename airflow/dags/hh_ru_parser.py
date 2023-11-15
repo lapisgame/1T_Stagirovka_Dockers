@@ -57,52 +57,64 @@ class hh_parser:
                 print(f'get 1.{page_number} {vac_name}')
                 req = requests.get('https://api.hh.ru/vacancies', params=params).json()
                 
-                res = {}
+                
                 if 'items' in req.keys():
                     for item in req['items']:
-                        res['vacancy_id'] = item['alternate_url']
-                        res['vacancy_name'] = item['']
-                        res['towns'] = item['area']['name']
-                        res['level'] = item['']
-                        res['company'] = item['employer']['name']
+                        res = {}
+                        try:
+                            res['vacancy_id'] = item['alternate_url']
+                            res['vacancy_name'] = item['name']
+                            res['towns'] = item['area']['name']
+                            res['level'] = item['']
+                            res['company'] = item['employer']['name']
 
-                        if item['salary'] == None:
-                            res['salary_from'] = item['']
-                            res['salary_to'] = item['']
-                        else:
-                            res['salary_from'] = item['']
-                            res['salary_to'] = item['']
+                            if item['salary'] == None:
+                                res['salary_from'] = None
+                                res['salary_to'] = None
+                            else:
+                                res['salary_from'] = item['salary']['from']
+                                res['salary_to'] = item['salary']['to']
 
-                        if item['experience'] == None:
-                            res['exp_from'] = '0'
-                            res['exp_to'] = '100'
-                        elif item['experience']['id'] == 'noExperience':
-                            res['exp_from'] = '0'
-                            res['exp_to'] = '0'
-                        elif item['experience']['id'] == 'between1And3':
-                            res['exp_from'] = '1'
-                            res['exp_to'] = '3'
-                        elif item['experience']['id'] == 'between3And6':
-                            res['exp_from'] = '3'
-                            res['exp_to'] = '6'
-                        else:
-                            res['exp_from'] = '6'
-                            res['exp_to'] = '100'
+                            if item['experience'] == None:
+                                res['exp_from'] = '0'
+                                res['exp_to'] = '100'
+                            elif item['experience']['id'] == 'noExperience':
+                                res['exp_from'] = '0'
+                                res['exp_to'] = '0'
+                            elif item['experience']['id'] == 'between1And3':
+                                res['exp_from'] = '1'
+                                res['exp_to'] = '3'
+                            elif item['experience']['id'] == 'between3And6':
+                                res['exp_from'] = '3'
+                                res['exp_to'] = '6'
+                            else:
+                                res['exp_from'] = '6'
+                                res['exp_to'] = '100'
 
-                        res['description'] = re.sub(self.re_html_tag_remove, '', item['description'])[0:65530]
+                            res['description'] = re.sub(self.re_html_tag_remove, '', item['description'])[0:65530]
 
-                        res['job_type'] = item['']
-                        res['job_format'] = item['']
-                        res['languages'] = item['']
-                        res['skills'] = ' '.join(skill['name'] for skill in item['key_skills'])
-                        res['source_vac'] = 'hh.ru'
-                        res['date_created'] = item['published_at']
-                        res['date_of_download'] = str(datetime.datetime.now())
-                        res['status'] = item['']
-                        res['date_closed'] = item['']
-                        res['version_vac'] = item['']
-                        res['actual'] = item['']
+                            res['job_type'] = item['employment']['name']
+                            res['job_format'] = item['schedule']['name']
+
+                            res['languages'] = item['']
+
+                            res['skills'] = ' '.join(skill['name'] for skill in item['key_skills'])
+
+                            res['source_vac'] = 'hh.ru'
+
+                            res['date_created'] = item['published_at']
+                            res['date_of_download'] = str(datetime.datetime.now())
+                            res['date_closed'] = None
+
+                            res['status'] = item['type']['name']
+                            
+                            res['version_vac'] = item[''] #!Первично ставить один, в иных случаях искать в бд, если уже есть ставить +1
+                            res['actual'] = item['']      #!В момент когда будет найдена строка с таким же id тут ставить 0, а в новой 1
                         
+                            self.df = pd.concat([self.df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
+                        except Exception as exc:
+                            print(f'В процессе парсинга вакансии {item["alternate_url"]} произошла ошибка {exc}')
+
                 else:
                     print(req)
 

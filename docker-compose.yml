@@ -275,6 +275,40 @@ services:
     networks:
       - jupyterhub
 
+  postgres_dev:
+    container_name: postgres_dev
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: 1T_Internship_dev
+      POSTGRES_PASSWORD: 1T_Internship_PASS
+      POSTGRES_DB: 1T_Internship_dev
+    volumes:
+      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
+    ports:
+      - "10211:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "1T_Internship_dev", "-d", "1T_Internship_dev", "-p", "10211"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  postgres_prod:
+    container_name: postgres_prod
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: 1T_Internship_prod
+      POSTGRES_PASSWORD: 1T_Internship_PASS
+      POSTGRES_DB: 1T_Internship_prod
+    volumes:
+      - ./dataBase/init_scripts/init.sql:/docker-entrypoint/initdb.d/init.sql
+    ports:
+      - "10212:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "1T_Internship_prod", "-d", "1T_Internship_prod", "-p", "10211"]
+      interval: 5s
+      retries: 5
+    restart: always
+
 volumes:
   postgres-db-volume:
   db_vol:

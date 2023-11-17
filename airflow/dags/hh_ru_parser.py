@@ -22,13 +22,13 @@ import pandas as pd
 import psycopg2
 
 class hh_parser:
-    def __init__(self, max_page_count=3) -> None:
+    def __init__(self, max_page_count=2) -> None:
         self.max_page_count = max_page_count
         self.vac_name_list = self.get_vacancy_name_list()
 
         self.re_html_tag_remove = r'<[^>]+>'
 
-        self.df = pd.DataFrame(['vacancy_id', 'vacancy_name', 'towns', 
+        self.new_df = pd.DataFrame(columns=['vacancy_id', 'vacancy_name', 'towns', 
                                 'level', 'company', 'salary_from', 'salary_to',
                                 'exp_from', 'exp_to', 'description', 
                                 'job_type', 'job_format', 'languages', 
@@ -36,9 +36,16 @@ class hh_parser:
                                 'date_created', 'date_of_download', 
                                 'status', 'date_closed',
                                 'version_vac', 'actual'])
+        
+        self.pg_hook = PostgresHook(postgres_conn_id='PostgreSQL_DEV')
+
 
     def topars(self):
-        for vac_name in self.vac_name_list[0:10]:
+        connection = self.pg_hook.get_conn()
+        
+        self.old_df = pd.read_sql("SELECT * FROM hh_row", connection)
+        print(self.old_df)
+        for vac_name in self.vac_name_list[0:1]:
             self.pars_vac(vac_name)
 
     def pars_vac(self, vac_name):
@@ -60,12 +67,13 @@ class hh_parser:
                 
                 if 'items' in req.keys():
                     for item in req['items']:
+                        item = requests.get(f'https://api.hh.ru/vacancies/{item["id"]}').json()
                         res = {}
                         try:
                             res['vacancy_id'] = item['alternate_url']
                             res['vacancy_name'] = item['name']
                             res['towns'] = item['area']['name']
-                            res['level'] = item['']
+                            res['level'] = ''
                             res['company'] = item['employer']['name']
 
                             if item['salary'] == None:
@@ -91,27 +99,27 @@ class hh_parser:
                                 res['exp_from'] = '6'
                                 res['exp_to'] = '100'
 
-                            res['description'] = re.sub(self.re_html_tag_remove, '', item['description'])[0:65530]
+                            res['description'] = re.sub(self.re_html_tag_remove, '', item['description'])
 
                             res['job_type'] = item['employment']['name']
                             res['job_format'] = item['schedule']['name']
 
-                            res['languages'] = item['']
+                            res['languages'] = ''
 
                             res['skills'] = ' '.join(skill['name'] for skill in item['key_skills'])
 
                             res['source_vac'] = 'hh.ru'
 
                             res['date_created'] = item['published_at']
-                            res['date_of_download'] = str(datetime.datetime.now())
+                            # res['date_of_download'] = str(datetime.datetime.now())
                             res['date_closed'] = None
 
                             res['status'] = item['type']['name']
-                            
-                            res['version_vac'] = item[''] #!Первично ставить один, в иных случаях искать в бд, если уже есть ставить +1
-                            res['actual'] = item['']      #!В момент когда будет найдена строка с таким же id тут ставить 0, а в новой 1
-                        
-                            self.df = pd.concat([self.df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
+
+                            res['version_vac'] = '' #!Первично ставить один, в иных случаях искать в бд, если уже есть ставить +1
+                            res['actual'] = ''      #!В момент когда будет найдена строка с таким же id тут ставить 0, а в новой 1
+
+                            self.new_df = pd.concat([self.new_df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
                         except Exception as exc:
                             print(f'В процессе парсинга вакансии {item["alternate_url"]} произошла ошибка {exc}')
 
@@ -140,9 +148,9 @@ dag = DAG(
 parser = hh_parser()
 
 Create_table = PostgresOperator(
-    task_id="create_hh_table",
+    task_id="create_hh_row_table",
     sql="""
-        CREATE TABLE IF NOT EXISTS hh (
+        CREATE TABLE IF NOT EXISTS hh_row (
             vacancy_id VARCHAR(2048) NOT NULL,
             vacancy_name VARCHAR(255) NOT NULL,
             towns VARCHAR(100),

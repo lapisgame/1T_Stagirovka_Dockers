@@ -9,6 +9,7 @@ import json
 import random
 import os
 import time
+import math
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,13 +17,13 @@ import lxml
 
 from dotenv import dotenv_values
 from fake_useragent import FakeUserAgent
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 import pandas as pd
 import psycopg2
 
 class hh_parser:
-    def __init__(self, max_page_count=2) -> None:
+    def __init__(self, max_page_count=3) -> None:
         self.max_page_count = max_page_count
         self.vac_name_list = self.get_vacancy_name_list()
 
@@ -39,21 +40,62 @@ class hh_parser:
         
         self.pg_hook = PostgresHook(postgres_conn_id='PostgreSQL_DEV')
 
+    def get_version(self, url:str):
+        new_df = self.old_df[self.old_df['vacancy_id']==url]
+        version = int(new_df.max()['version_vac'])
+        if math.isnan(version) or (new_df['date_created'] == self.old_df['date_created']):
+            return 1
+        return version+1
+    
+    def set_actually(self):
+        res = pd.DataFrame(columns=['vacancy_id', 'vacancy_name', 'towns', 
+                                'level', 'company', 'salary_from', 'salary_to',
+                                'exp_from', 'exp_to', 'description', 
+                                'job_type', 'job_format', 'languages', 
+                                'skills', 'source_vac', 
+                                'date_created', 'date_of_download', 
+                                'status', 'date_closed',
+                                'version_vac', 'actual'])
+        
+        for index, row in self.res_df.iterrows():
+            temp_df = self.res_df[self.res_df['vacancy_id']==row['vacancy_id']]
+            if len(temp_df) > 1:
+                maxx = int(temp_df.max()['version_vac'])
+                for index, row in temp_df.iterrows():
+                    if int(row['version_vac']) != maxx:
+                        temp_df.at[index, 'actual'] = '0'
+            
+            res = pd.concat([res, temp_df], ignore_index=True)
+        
+        return res
 
     def topars(self):
         connection = self.pg_hook.get_conn()
-        
-        self.old_df = pd.read_sql("SELECT * FROM hh_row", connection)
-        print(self.old_df)
-        for vac_name in self.vac_name_list[0:1]:
-            self.pars_vac(vac_name)
+        cur = connection.cursor()
 
-    def pars_vac(self, vac_name):
+        self.old_df = pd.read_sql("SELECT * FROM hh_row", connection)
+        for vac_name in self.vac_name_list[0:5]:
+            self.pars_vac(vac_name)
+            time.sleep(5)
+        
+        self.res_df = pd.concat([self.old_df, self.new_df], ignore_index=True)
+        self.res_df = self.set_actually()
+        self.res_df = self.res_df.drop_duplicates()
+
+        tpls = [tuple(x) for x in self.res_df.to_numpy()]
+        sql = "INSERT INTO hh_row VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+
+        cur.executemany(sql, tpls)
+
+        connection.commit()
+        connection.close()
+
+    def pars_vac(self, vac_name:str):
         for page_number in range(self.max_page_count):
             params = {
                 'text': f'{vac_name}',
                 'page': page_number,
-                'per_page': 50,
+                'per_page': 20,
                 'area': '113',
                 'only_with_salary': 'true',
                 'negotiations_order': 'updated_at',
@@ -63,14 +105,14 @@ class hh_parser:
             try:
                 print(f'get 1.{page_number} {vac_name}')
                 req = requests.get('https://api.hh.ru/vacancies', params=params).json()
-                
+                time.sleep(5)
                 
                 if 'items' in req.keys():
                     for item in req['items']:
                         item = requests.get(f'https://api.hh.ru/vacancies/{item["id"]}').json()
                         res = {}
                         try:
-                            res['vacancy_id'] = item['alternate_url']
+                            res['vacancy_id'] = f'https://hh.ru/vacancy/{item["id"]}'
                             res['vacancy_name'] = item['name']
                             res['towns'] = item['area']['name']
                             res['level'] = ''
@@ -111,13 +153,13 @@ class hh_parser:
                             res['source_vac'] = 'hh.ru'
 
                             res['date_created'] = item['published_at']
-                            # res['date_of_download'] = str(datetime.datetime.now())
-                            res['date_closed'] = None
-
+                            res['date_of_download'] = datetime.now()
                             res['status'] = item['type']['name']
 
-                            res['version_vac'] = '' #!Первично ставить один, в иных случаях искать в бд, если уже есть ставить +1
-                            res['actual'] = ''      #!В момент когда будет найдена строка с таким же id тут ставить 0, а в новой 1
+                            res['date_closed'] = None
+
+                            res['version_vac'] = self.get_version(item['alternate_url']) 
+                            res['actual'] = '1'      
 
                             self.new_df = pd.concat([self.new_df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
                         except Exception as exc:

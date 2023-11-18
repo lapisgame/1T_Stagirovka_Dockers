@@ -42,10 +42,16 @@ class hh_parser:
 
     def get_version(self, url:str):
         new_df = self.old_df[self.old_df['vacancy_id']==url]
-        version = int(new_df.max()['version_vac'])
-        if math.isnan(version) or (new_df['date_created'] == self.old_df['date_created']):
-            return 1
-        return version+1
+        version = new_df.max()['version_vac']
+        try:
+            if math.isnan(version):
+                return 1
+            return int(version)+1
+        except:
+            version = int(version)
+            if math.isnan(version):
+                return 1
+            return int(version)+1
     
     def set_actually(self):
         res = pd.DataFrame(columns=['vacancy_id', 'vacancy_name', 'towns', 
@@ -58,14 +64,14 @@ class hh_parser:
                                 'version_vac', 'actual'])
         
         for index, row in self.res_df.iterrows():
-            temp_df = self.res_df[self.res_df['vacancy_id']==row['vacancy_id']]
+            temp_df = self.res_df[self.res_df['vacancy_id']==row.values[0]]
             if len(temp_df) > 1:
                 maxx = int(temp_df.max()['version_vac'])
                 for index, row in temp_df.iterrows():
                     if int(row['version_vac']) != maxx:
                         temp_df.at[index, 'actual'] = '0'
             
-            res = pd.concat([res, temp_df], ignore_index=True)
+                res = pd.concat([res, temp_df], ignore_index=True)
         
         return res
 
@@ -158,12 +164,12 @@ class hh_parser:
 
                             res['date_closed'] = None
 
-                            res['version_vac'] = self.get_version(item['alternate_url']) 
+                            res['version_vac'] = self.get_version(f'https://hh.ru/vacancy/{item["id"]}') 
                             res['actual'] = '1'      
 
                             self.new_df = pd.concat([self.new_df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
                         except Exception as exc:
-                            print(f'В процессе парсинга вакансии {item["alternate_url"]} произошла ошибка {exc}')
+                            print(f'В процессе парсинга вакансии https://hh.ru/vacancy/{item["id"]} произошла ошибка {exc}')
 
                 else:
                     print(req)

@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.hooks.postgres_hook import PostgresHook
+import logging
 from datetime import datetime
 
 import re
@@ -40,18 +41,31 @@ class hh_parser:
         
         self.pg_hook = PostgresHook(postgres_conn_id='PostgreSQL_DEV')
 
-    def get_version(self, url:str):
-        new_df = self.old_df[self.old_df['vacancy_id']==url]
+    def get_version(self, arr):
+        new_df = self.old_df[self.old_df['vacancy_id']==arr['vacancy_id']]
         version = new_df.max()['version_vac']
+        temp_df = new_df[new_df['version_vac']==version]
+
         try:
             if math.isnan(version):
                 return 1
-            return int(version)+1
+            elif (temp_df['description'][0] != arr['description'] or \
+                temp_df['vacancy_name'][0] != arr['vacancy_name'] or \
+                temp_df['towns'][0] != arr['towns'] or \
+                temp_df['salary_from'][0] != arr['salary_from'] or temp_df['salary_to'][0] != arr['salary_to'] or \
+                temp_df['job_type'][0] != arr['job_type'] or temp_df['job_format'][0] != arr['job_format'] or \
+                temp_df['skills'][0] != arr['skills'] or temp_df['date_created'][0] != arr['date_created']):
+
+                return int(version)+1
+            else:
+                return int(version)
         except:
             version = int(version)
             if math.isnan(version):
                 return 1
             return int(version)+1
+        finally:
+            return 1
     
     def set_actually(self):
         res = pd.DataFrame(columns=['vacancy_id', 'vacancy_name', 'towns', 
@@ -66,10 +80,13 @@ class hh_parser:
         for index, row in self.res_df.iterrows():
             temp_df = self.res_df[self.res_df['vacancy_id']==row.values[0]]
             if len(temp_df) > 1:
-                maxx = int(temp_df.max()['version_vac'])
-                for index, row in temp_df.iterrows():
-                    if int(row['version_vac']) != maxx:
-                        temp_df.at[index, 'actual'] = '0'
+                try:
+                    maxx = int(temp_df.max()['version_vac'])
+                    for index, row in temp_df.iterrows():
+                        if int(row['version_vac']) != maxx:
+                            temp_df.at[index, 'actual'] = '0'
+                except Exception as exp:
+                    logging.error(f'В ходе set_actully произошла ошибка {exp}')
             
                 res = pd.concat([res, temp_df], ignore_index=True)
         
@@ -80,12 +97,13 @@ class hh_parser:
         cur = connection.cursor()
 
         self.old_df = pd.read_sql("SELECT * FROM hh_row", connection)
-        for vac_name in self.vac_name_list[0:5]:
+        for vac_name in self.vac_name_list:
             self.pars_vac(vac_name)
             time.sleep(5)
         
         self.res_df = pd.concat([self.old_df, self.new_df], ignore_index=True)
-        self.res_df = self.set_actually()
+        self.res_df = self.res_df.fillna(0)
+        # self.res_df = self.set_actually()
         self.res_df = self.res_df.drop_duplicates()
 
         tpls = [tuple(x) for x in self.res_df.to_numpy()]
@@ -109,7 +127,7 @@ class hh_parser:
             }
 
             try:
-                print(f'get 1.{page_number} {vac_name}')
+                logging.info(f'get 1.{page_number} {vac_name}')
                 req = requests.get('https://api.hh.ru/vacancies', params=params).json()
                 time.sleep(5)
                 
@@ -162,20 +180,20 @@ class hh_parser:
                             res['date_of_download'] = datetime.now()
                             res['status'] = item['type']['name']
 
-                            res['date_closed'] = None
+                            res['date_closed'] = date(2025, 1, 1)
 
-                            res['version_vac'] = self.get_version(f'https://hh.ru/vacancy/{item["id"]}') 
+                            res['version_vac'] = self.get_version(res) 
                             res['actual'] = '1'      
 
                             self.new_df = pd.concat([self.new_df, pd.DataFrame(pd.json_normalize(res))], ignore_index=True)
                         except Exception as exc:
-                            print(f'В процессе парсинга вакансии https://hh.ru/vacancy/{item["id"]} произошла ошибка {exc}')
+                            logging.error(f'В процессе парсинга вакансии https://hh.ru/vacancy/{item["id"]} произошла ошибка {exc}')
 
                 else:
-                    print(req)
+                    logging.info(req)
 
             except Exception as e:
-                print(f'ERROR {vac_name}', e)
+                logging.error(f'ERROR {vac_name} {e}')
                 continue
 
     def get_vacancy_name_list(self):

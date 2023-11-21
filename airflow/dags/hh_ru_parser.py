@@ -207,8 +207,8 @@ class hh_parser:
 dag = DAG(
     'HH_parsing',
     description='DAG для парсинга вакансий HH',
-    schedule_interval=None,
-    start_date=datetime(2022, 11, 10)
+    schedule="@daily",
+    start_date=datetime(2023, 11, 21)
 )
 
 parser = hh_parser()

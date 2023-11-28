@@ -6,22 +6,13 @@ import logging
 from datetime import datetime
 
 import re
-import json
-import random
-import os
 import time
-import math
 
 import requests
-from bs4 import BeautifulSoup
-import lxml
 
-from dotenv import dotenv_values
-from fake_useragent import FakeUserAgent
-from datetime import date, timedelta, datetime
+from datetime import date, datetime
 
 import pandas as pd
-import psycopg2
 
 class hh_parser:
     def __init__(self, max_page_count=3) -> None:
